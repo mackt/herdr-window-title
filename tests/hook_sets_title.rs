@@ -53,6 +53,20 @@ fn run_hook(socket_path: &Path, envs: &[(&str, &str)]) -> std::process::ExitStat
     command.status().expect("hook binary runs")
 }
 
+/// Write an executable fake `herdr` CLI that prints canned `status --json` output.
+fn write_fake_herdr_bin(dir: &Path, status_json: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin_path = dir.join("fake-herdr");
+    std::fs::write(
+        &bin_path,
+        format!("#!/bin/sh\nprintf '%s\\n' '{status_json}'\n"),
+    )
+    .expect("write fake herdr bin");
+    std::fs::set_permissions(&bin_path, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod fake herdr bin");
+    bin_path
+}
+
 #[test]
 fn hook_sets_title_from_herdr_session_env() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -68,4 +82,27 @@ fn hook_sets_title_from_herdr_session_env() {
     assert_eq!(request["method"], "client.window_title.set");
     assert_eq!(request["params"]["title"], "herdr:personal");
     assert!(status.success(), "hook exits zero after the title is set");
+}
+
+#[test]
+fn hook_falls_back_to_status_json_when_env_is_absent() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let socket_path = dir.path().join("herdr.sock");
+    let listener = UnixListener::bind(&socket_path).expect("bind fake herdr socket");
+    let request_rx = serve_one_request(listener);
+    let fake_bin = write_fake_herdr_bin(
+        dir.path(),
+        r#"{"client":{"session":"work"},"server":{"session":"work"}}"#,
+    );
+
+    let status = run_hook(
+        &socket_path,
+        &[("HERDR_BIN_PATH", fake_bin.to_str().expect("utf8 path"))],
+    );
+
+    let request = request_rx
+        .recv_timeout(ACCEPT_TIMEOUT)
+        .expect("hook sent a request to the herdr socket");
+    assert_eq!(request["params"]["title"], "herdr:work");
+    assert!(status.success());
 }
