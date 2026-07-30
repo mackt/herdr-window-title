@@ -97,6 +97,28 @@ fn spinner_scope_moves_the_focused_boundary() {
 }
 
 #[test]
+fn session_scope_spins_for_any_working_agent_anywhere() {
+    let config = Config {
+        spinner_scope: SpinnerScope::Session,
+        ..Config::default()
+    };
+    // Focused pane idle; the only work happens in a *different* workspace.
+    let elsewhere = snapshot_with_agents(&[
+        ("w1:p1", "w1", "idle"),
+        ("w2:p1", "w2", "working"),
+        ("w2:p2", "w2", "working"),
+    ]);
+    assert_eq!(
+        render(&elsewhere, &config),
+        "⠋ herdr:personal",
+        "any running agent in the session shows the spinner, never a count"
+    );
+
+    let idle = snapshot_with_agents(&[("w1:p1", "w1", "idle")]);
+    assert_eq!(render(&idle, &config), "herdr:personal");
+}
+
+#[test]
 fn glyphs_come_from_config() {
     let config = Config {
         blocked_glyph: "!".into(),

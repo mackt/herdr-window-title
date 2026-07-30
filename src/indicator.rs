@@ -82,6 +82,7 @@ pub fn activity(snapshot: &serde_json::Value, scope: SpinnerScope) -> SessionAct
                 let in_scope = match scope {
                     SpinnerScope::Pane => agent.pane_id == focus.pane_id,
                     SpinnerScope::Workspace => agent.workspace_id == focus.workspace_id,
+                    SpinnerScope::Session => true,
                 };
                 if in_scope {
                     activity.focused_working = true;

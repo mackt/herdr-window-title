@@ -9,6 +9,9 @@ pub const DEFAULT_TEMPLATE: &str = "{indicator}herdr:{session}";
 pub enum SpinnerScope {
     Pane,
     Workspace,
+    /// Any working agent anywhere in the session spins; nothing is
+    /// "background", so the working count never appears.
+    Session,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -116,7 +119,14 @@ impl Config {
             Some(toml::Value::String(value)) if value == "workspace" => {
                 config.spinner_scope = SpinnerScope::Workspace;
             }
-            Some(other) => warnings.push(bad_type("spinner_scope", "\"pane\" or \"workspace\"", other)),
+            Some(toml::Value::String(value)) if value == "session" => {
+                config.spinner_scope = SpinnerScope::Session;
+            }
+            Some(other) => warnings.push(bad_type(
+                "spinner_scope",
+                "\"pane\", \"workspace\", or \"session\"",
+                other,
+            )),
         }
 
         (config, warnings)

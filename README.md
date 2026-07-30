@@ -72,7 +72,9 @@ Exactly one segment, highest priority wins, counted across the whole session:
 5. empty — nothing happening
 
 Counts cap at `9+`. "Focused" means the focused pane by default; set
-`spinner_scope = "workspace"` to count any pane in the focused workspace.
+`spinner_scope = "workspace"` to count any pane in the focused workspace, or
+`spinner_scope = "session"` to spin whenever *any* agent in the session is
+working (the background count then never appears).
 
 ## Configuration
 
@@ -88,7 +90,7 @@ working_template = ""
 blocked_template = ""     # e.g. "●{session} NEEDS YOU"
 done_template = ""
 
-spinner_scope = "pane"    # "pane" | "workspace"
+spinner_scope = "pane"    # "pane" | "workspace" | "session"
 spinner_interval_ms = 200 # spinner frame rate while focused work runs
 idle_keepalive_ms = 2000  # title re-assert cadence (also the reattach fix)
 
