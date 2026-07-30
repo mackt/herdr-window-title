@@ -16,6 +16,21 @@ fn values() -> TokenValues {
 }
 
 #[test]
+fn optional_section_vanishes_when_all_inner_tokens_are_empty() {
+    let template = Template::parse("{indicator}herdr:{session}[ · {workspace}]").expect("valid");
+    let mut empty_extras = values();
+    empty_extras.indicator = String::new();
+    empty_extras.workspace = String::new();
+    assert_eq!(template.render(&empty_extras), "herdr:personal");
+}
+
+#[test]
+fn optional_section_renders_when_any_inner_token_has_a_value() {
+    let template = Template::parse("herdr:{session}[ · {workspace}]").expect("valid");
+    assert_eq!(template.render(&values()), "herdr:personal · dotfiles");
+}
+
+#[test]
 fn substitutes_every_token() {
     let template =
         Template::parse("{indicator}herdr:{session} {workspace}/{tab} {agent}:{title}@{host}")

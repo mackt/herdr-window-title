@@ -35,6 +35,8 @@ pub struct ParseError {
 enum Segment {
     Literal(String),
     Token(String),
+    /// `[ ... ]` — vanishes entirely when every token inside renders empty.
+    Section(Vec<Segment>),
 }
 
 #[derive(Debug)]
@@ -44,53 +46,106 @@ pub struct Template {
 
 impl Template {
     pub fn parse(source: &str) -> Result<Self, ParseError> {
-        let mut segments = Vec::new();
-        let mut literal = String::new();
-        let mut chars = source.chars();
-        while let Some(ch) = chars.next() {
-            match ch {
-                '{' => {
-                    let mut name = String::new();
-                    loop {
-                        match chars.next() {
-                            Some('}') => break,
-                            Some(ch) => name.push(ch),
-                            None => {
-                                return Err(ParseError {
-                                    message: format!("unclosed '{{' before end of template: {{{name}"),
-                                })
-                            }
-                        }
-                    }
-                    if !literal.is_empty() {
-                        segments.push(Segment::Literal(std::mem::take(&mut literal)));
-                    }
-                    segments.push(Segment::Token(name));
-                }
-                ch => literal.push(ch),
-            }
-        }
-        if !literal.is_empty() {
-            segments.push(Segment::Literal(literal));
-        }
+        let mut chars = source.chars().peekable();
+        let segments = parse_segments(&mut chars, false)?;
         Ok(Self { segments })
     }
 
     pub fn render(&self, values: &TokenValues) -> String {
-        let mut out = String::new();
-        for segment in &self.segments {
-            match segment {
-                Segment::Literal(text) => out.push_str(text),
-                Segment::Token(name) => match values.get(name) {
-                    Some(value) => out.push_str(value),
-                    None => {
-                        out.push('{');
-                        out.push_str(name);
-                        out.push('}');
+        render_segments(&self.segments, values).text
+    }
+}
+
+struct Rendered {
+    text: String,
+    saw_token: bool,
+    saw_token_value: bool,
+}
+
+fn render_segments(segments: &[Segment], values: &TokenValues) -> Rendered {
+    let mut out = Rendered {
+        text: String::new(),
+        saw_token: false,
+        saw_token_value: false,
+    };
+    for segment in segments {
+        match segment {
+            Segment::Literal(text) => out.text.push_str(text),
+            Segment::Token(name) => match values.get(name) {
+                Some(value) => {
+                    out.saw_token = true;
+                    if !value.is_empty() {
+                        out.saw_token_value = true;
+                        out.text.push_str(value);
                     }
-                },
+                }
+                None => {
+                    out.text.push('{');
+                    out.text.push_str(name);
+                    out.text.push('}');
+                }
+            },
+            Segment::Section(inner) => {
+                let rendered = render_segments(inner, values);
+                let vanish = rendered.saw_token && !rendered.saw_token_value;
+                if !vanish {
+                    out.saw_token |= rendered.saw_token;
+                    out.saw_token_value |= rendered.saw_token_value;
+                    out.text.push_str(&rendered.text);
+                }
             }
         }
-        out
     }
+    out
+}
+
+fn parse_segments(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    in_section: bool,
+) -> Result<Vec<Segment>, ParseError> {
+    let mut segments = Vec::new();
+    let mut literal = String::new();
+    let mut flush = |literal: &mut String, segments: &mut Vec<Segment>| {
+        if !literal.is_empty() {
+            segments.push(Segment::Literal(std::mem::take(literal)));
+        }
+    };
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => {
+                let mut name = String::new();
+                loop {
+                    match chars.next() {
+                        Some('}') => break,
+                        Some(ch) => name.push(ch),
+                        None => {
+                            return Err(ParseError {
+                                message: format!(
+                                    "unclosed '{{' before end of template: {{{name}"
+                                ),
+                            })
+                        }
+                    }
+                }
+                flush(&mut literal, &mut segments);
+                segments.push(Segment::Token(name));
+            }
+            '[' => {
+                flush(&mut literal, &mut segments);
+                segments.push(Segment::Section(parse_segments(chars, true)?));
+            }
+            ']' if in_section => {
+                flush(&mut literal, &mut segments);
+                return Ok(segments);
+            }
+            ch => literal.push(ch),
+        }
+    }
+    if in_section {
+        return Err(ParseError {
+            message: "unclosed '[' before end of template".into(),
+        });
+    }
+    flush(&mut literal, &mut segments);
+    Ok(segments)
 }
