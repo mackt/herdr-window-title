@@ -35,7 +35,7 @@ fn write_config(dir: &std::path::Path, contents: &str) -> tempfile::TempDir {
     config_dir
 }
 
-fn hook_env<'a>(config_dir: &'a tempfile::TempDir) -> Vec<(&'a str, &'a str)> {
+fn hook_env(config_dir: &tempfile::TempDir) -> Vec<(&str, &str)> {
     vec![
         ("HERDR_SESSION", "personal"),
         (

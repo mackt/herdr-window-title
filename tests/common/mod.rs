@@ -113,7 +113,7 @@ impl FakeHerdr {
     pub fn wait_for_title(&self, expected: &str) -> Vec<String> {
         let expected = expected.to_string();
         self.wait_for_titles(DEFAULT_TIMEOUT, |titles| {
-            titles.iter().any(|title| *title == expected)
+            titles.contains(&expected)
         })
     }
 }
