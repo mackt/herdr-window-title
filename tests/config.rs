@@ -115,8 +115,13 @@ fn config_edits_apply_on_the_next_render_without_restart() {
     fake.wait_for_title("two:personal");
 }
 
+// Sanctioned exception to the two-seam rule: ticket #4's acceptance
+// criterion explicitly requires "defaults for every key are asserted in
+// tests and match the spec table", and interval defaults have no cheap
+// observable at either seam. Everything else config-related asserts
+// through titles (this file) or render_title (tests/indicator.rs).
 #[test]
-fn defaults_match_the_spec_table() {
+fn config_table_defaults_and_field_fallback_match_the_spec() {
     let config = Config::default();
     assert_eq!(config.template, "{indicator}herdr:{session}");
     assert_eq!(config.working_template, None);
@@ -127,25 +132,34 @@ fn defaults_match_the_spec_table() {
     assert_eq!(config.idle_keepalive_ms, 2000);
     assert_eq!(config.blocked_glyph, "●");
     assert_eq!(config.done_glyph, "✓");
-}
 
-#[test]
-fn per_state_templates_and_scope_parse_with_field_level_fallback() {
-    let (config, warnings) = Config::parse(
-        r#"
-        blocked_template = "attention {session}"
-        done_template = "review {session}"
-        working_template = "busy {session}"
-        spinner_scope = "workspace"
-        spinner_interval_ms = -5
-        blocked_glyph = 7
-        "#,
-    );
-    assert_eq!(config.blocked_template.as_deref(), Some("attention {session}"));
-    assert_eq!(config.done_template.as_deref(), Some("review {session}"));
-    assert_eq!(config.working_template.as_deref(), Some("busy {session}"));
-    assert_eq!(config.spinner_scope, SpinnerScope::Workspace);
+    let (config, warnings) = Config::parse("spinner_interval_ms = -5\nblocked_glyph = 7\n");
     assert_eq!(config.spinner_interval_ms, 200, "invalid interval falls back");
     assert_eq!(config.blocked_glyph, "●", "invalid glyph falls back");
     assert_eq!(warnings.len(), 2, "one warning per invalid field: {warnings:?}");
+}
+
+#[test]
+fn unknown_token_warns_in_the_plugin_log_and_renders_literally() {
+    let fake = FakeHerdr::start();
+    let config_dir = tempfile::tempdir().expect("config dir");
+    write_config(config_dir.path(), r#"template = "herdr:{sesion}""#);
+
+    let output = run_hook_capture(
+        &fake.socket_path,
+        &[
+            ("HERDR_SESSION", "personal"),
+            (
+                "HERDR_PLUGIN_CONFIG_DIR",
+                config_dir.path().to_str().expect("utf8 path"),
+            ),
+        ],
+    );
+
+    fake.wait_for_title("herdr:{sesion}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown token {sesion}"),
+        "hook warns about the typo; stderr was: {stderr}"
+    );
 }

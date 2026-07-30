@@ -28,9 +28,8 @@ fn idle_snapshot() -> serde_json::Value {
     })
 }
 
-fn write_config(dir: &std::path::Path, contents: &str) -> tempfile::TempDir {
+fn write_config(contents: &str) -> tempfile::TempDir {
     let config_dir = tempfile::tempdir().expect("config dir");
-    let _ = dir; // config lives in its own dir; state lives next to the socket
     std::fs::write(config_dir.path().join("config.toml"), contents).expect("write config");
     config_dir
 }
@@ -49,7 +48,7 @@ fn hook_env(config_dir: &tempfile::TempDir) -> Vec<(&str, &str)> {
 fn spinner_animates_while_the_focused_agent_works() {
     let fake = FakeHerdr::start();
     fake.set_snapshot(working_snapshot());
-    let config_dir = write_config(fake.dir.path(), "spinner_interval_ms = 50");
+    let config_dir = write_config("spinner_interval_ms = 50");
 
     run_hook(&fake.socket_path, &hook_env(&config_dir));
 
@@ -67,7 +66,7 @@ fn spinner_animates_while_the_focused_agent_works() {
 fn keepalive_reasserts_the_title_for_reattached_clients() {
     let fake = FakeHerdr::start();
     fake.set_snapshot(idle_snapshot());
-    let config_dir = write_config(fake.dir.path(), "idle_keepalive_ms = 100");
+    let config_dir = write_config("idle_keepalive_ms = 100");
 
     run_hook(&fake.socket_path, &hook_env(&config_dir));
 
@@ -83,7 +82,7 @@ fn duplicate_renders_between_keepalives_are_suppressed() {
     let fake = FakeHerdr::start();
     fake.set_snapshot(idle_snapshot());
     let config_dir =
-        write_config(fake.dir.path(), "idle_keepalive_ms = 60000\nspinner_interval_ms = 60000");
+        write_config("idle_keepalive_ms = 60000\nspinner_interval_ms = 60000");
 
     run_hook(&fake.socket_path, &hook_env(&config_dir));
     fake.wait_for_title("herdr:personal");
@@ -102,7 +101,7 @@ fn duplicate_renders_between_keepalives_are_suppressed() {
 fn a_new_monitor_takes_over_after_the_old_one_dies() {
     let fake = FakeHerdr::start();
     fake.set_snapshot(idle_snapshot());
-    let config_dir = write_config(fake.dir.path(), "idle_keepalive_ms = 100");
+    let config_dir = write_config("idle_keepalive_ms = 100");
     let env = hook_env(&config_dir);
 
     run_hook(&fake.socket_path, &env);

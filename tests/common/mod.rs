@@ -203,6 +203,32 @@ fn hook_command(socket_path: &Path, envs: &[(&str, &str)]) -> Command {
     command
 }
 
+/// A minimal snapshot: focused workspace w1 (label "one"), focused pane
+/// w1:p1, plus the given agent entries as (pane_id, workspace_id, status).
+pub fn snapshot_with_agents(agents: &[(&str, &str, &str)]) -> serde_json::Value {
+    let agents: Vec<serde_json::Value> = agents
+        .iter()
+        .map(|(pane_id, workspace_id, status)| {
+            serde_json::json!({
+                "pane_id": pane_id,
+                "workspace_id": workspace_id,
+                "agent": "claude",
+                "agent_status": status,
+                "focused": *pane_id == "w1:p1",
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "focused_workspace_id": "w1",
+        "focused_tab_id": "w1:t1",
+        "focused_pane_id": "w1:p1",
+        "workspaces": [{"workspace_id": "w1", "label": "one", "focused": true}],
+        "tabs": [],
+        "agents": agents,
+        "panes": [],
+    })
+}
+
 /// Write an executable fake `herdr` CLI that prints canned `status --json` output.
 pub fn write_fake_herdr_bin(dir: &Path, status_json: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;

@@ -11,6 +11,16 @@ pub struct TokenValues {
     pub host: String,
 }
 
+pub const KNOWN_TOKENS: [&str; 7] = [
+    "indicator",
+    "session",
+    "workspace",
+    "tab",
+    "agent",
+    "title",
+    "host",
+];
+
 impl TokenValues {
     fn get(&self, name: &str) -> Option<&str> {
         match name {
@@ -54,6 +64,49 @@ impl Template {
     pub fn render(&self, values: &TokenValues) -> String {
         render_segments(&self.segments, values).text
     }
+
+    /// Token names in this template that no value exists for — rendered
+    /// literally, and worth a warning in the plugin log.
+    pub fn unknown_tokens(&self) -> Vec<&str> {
+        fn walk<'template>(segments: &'template [Segment], out: &mut Vec<&'template str>) {
+            for segment in segments {
+                match segment {
+                    Segment::Token(name) if !KNOWN_TOKENS.contains(&name.as_str()) => {
+                        out.push(name);
+                    }
+                    Segment::Section(inner) => walk(inner, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.segments, &mut out);
+        out
+    }
+}
+
+/// Parse `source`, falling back to the built-in default template on syntax
+/// errors. Warnings cover both fallback and unknown tokens; the caller
+/// decides where they land (hooks print them into the plugin log).
+pub fn parse_with_fallback(source: &str, default: &str) -> (Template, Vec<String>) {
+    let mut warnings = Vec::new();
+    let template = match Template::parse(source) {
+        Ok(template) => template,
+        Err(error) => {
+            warnings.push(format!(
+                "template: {}; using the default template",
+                error.message
+            ));
+            Template::parse(default).expect("built-in template is valid")
+        }
+    };
+    for name in template.unknown_tokens() {
+        warnings.push(format!(
+            "template: unknown token {{{name}}} renders literally (known: {})",
+            KNOWN_TOKENS.join(", ")
+        ));
+    }
+    (template, warnings)
 }
 
 struct Rendered {

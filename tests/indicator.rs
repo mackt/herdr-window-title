@@ -1,99 +1,124 @@
-//! Pure seam: session activity aggregation and indicator rendering.
+//! Secondary seam: the pure `render_title` function. Indicator behaviour is
+//! asserted only through the title strings it produces.
 
+mod common;
+
+use common::snapshot_with_agents;
 use herdr_window_title::config::{Config, SpinnerScope};
-use herdr_window_title::indicator::{activity, indicator, SessionActivity};
+use herdr_window_title::render::render_title;
 
-/// Two workspaces; focus on w1:p1. Statuses across the whole session:
-/// one blocked (other workspace), one done, one unknown (ignored),
-/// focused pane working, plus one background working pane.
-fn snapshot() -> serde_json::Value {
-    serde_json::json!({
-        "focused_workspace_id": "w1",
-        "focused_tab_id": "w1:t1",
-        "focused_pane_id": "w1:p1",
-        "workspaces": [
-            {"workspace_id": "w1", "label": "one", "focused": true},
-            {"workspace_id": "w2", "label": "two", "focused": false},
-        ],
-        "tabs": [],
-        "agents": [
-            {"pane_id": "w1:p1", "workspace_id": "w1", "agent": "claude", "agent_status": "working", "focused": true},
-            {"pane_id": "w1:p2", "workspace_id": "w1", "agent": "codex", "agent_status": "working", "focused": false},
-            {"pane_id": "w2:p1", "workspace_id": "w2", "agent": "pi", "agent_status": "blocked", "focused": false},
-            {"pane_id": "w2:p2", "workspace_id": "w2", "agent": "grok", "agent_status": "done", "focused": false},
-            {"pane_id": "w2:p3", "workspace_id": "w2", "agent": "droid", "agent_status": "unknown", "focused": false},
-        ],
-        "panes": [],
-    })
-}
-
-fn active(blocked: usize, done: usize, focused: bool, background: usize) -> SessionActivity {
-    SessionActivity {
-        blocked,
-        done,
-        focused_working: focused,
-        background_working: background,
-    }
+fn render(snapshot: &serde_json::Value, config: &Config) -> String {
+    render_title(snapshot, config, "personal", "mbp", "⠋")
 }
 
 #[test]
-fn indicator_renders_one_segment_by_priority() {
+fn indicator_shows_one_segment_by_priority() {
     let config = Config::default();
-    let frame = "⠋";
-    // blocked beats everything; done beats working; spinner beats count.
-    assert_eq!(indicator(&active(2, 1, true, 3), &config, frame), "●2 ");
-    assert_eq!(indicator(&active(0, 1, true, 3), &config, frame), "✓1 ");
-    assert_eq!(indicator(&active(0, 0, true, 3), &config, frame), "⠋ ");
-    assert_eq!(indicator(&active(0, 0, false, 3), &config, frame), "③ ");
-    assert_eq!(indicator(&active(0, 0, false, 0), &config, frame), "");
+    // Full house: focused working, one background working, two blocked,
+    // one done, one unknown (which must never matter).
+    let full = snapshot_with_agents(&[
+        ("w1:p1", "w1", "working"),
+        ("w1:p2", "w1", "working"),
+        ("w2:p1", "w2", "blocked"),
+        ("w2:p2", "w2", "blocked"),
+        ("w2:p3", "w2", "done"),
+        ("w2:p4", "w2", "unknown"),
+    ]);
+    assert_eq!(render(&full, &config), "●2 herdr:personal");
+
+    let no_blocked = snapshot_with_agents(&[
+        ("w1:p1", "w1", "working"),
+        ("w2:p3", "w2", "done"),
+        ("w2:p4", "w2", "unknown"),
+    ]);
+    assert_eq!(render(&no_blocked, &config), "✓1 herdr:personal");
+
+    let focused_working = snapshot_with_agents(&[
+        ("w1:p1", "w1", "working"),
+        ("w1:p2", "w1", "working"),
+        ("w2:p4", "w2", "unknown"),
+    ]);
+    assert_eq!(render(&focused_working, &config), "⠋ herdr:personal");
+
+    let background_only = snapshot_with_agents(&[
+        ("w1:p2", "w1", "working"),
+        ("w2:p4", "w2", "unknown"),
+    ]);
+    assert_eq!(render(&background_only, &config), "① herdr:personal");
+
+    let idle = snapshot_with_agents(&[("w2:p4", "w2", "unknown")]);
+    assert_eq!(render(&idle, &config), "herdr:personal");
 }
 
 #[test]
 fn counts_cap_for_display() {
     let config = Config::default();
-    assert_eq!(indicator(&active(12, 0, false, 0), &config, "⠋"), "●9+ ");
-    assert_eq!(indicator(&active(0, 10, false, 0), &config, "⠋"), "✓9+ ");
-    assert_eq!(indicator(&active(0, 0, false, 20), &config, "⠋"), "⑳ ");
-    assert_eq!(indicator(&active(0, 0, false, 21), &config, "⠋"), "⊕ ");
+    let blocked: Vec<(String, String, &str)> = (0..12)
+        .map(|i| (format!("w2:p{i}"), "w2".to_string(), "blocked"))
+        .collect();
+    let blocked: Vec<(&str, &str, &str)> = blocked
+        .iter()
+        .map(|(p, w, s)| (p.as_str(), w.as_str(), *s))
+        .collect();
+    assert_eq!(
+        render(&snapshot_with_agents(&blocked), &config),
+        "●9+ herdr:personal"
+    );
+
+    let background: Vec<(String, String, &str)> = (0..21)
+        .map(|i| (format!("w2:p{i}"), "w2".to_string(), "working"))
+        .collect();
+    let background: Vec<(&str, &str, &str)> = background
+        .iter()
+        .map(|(p, w, s)| (p.as_str(), w.as_str(), *s))
+        .collect();
+    assert_eq!(
+        render(&snapshot_with_agents(&background), &config),
+        "⊕ herdr:personal"
+    );
+}
+
+#[test]
+fn spinner_scope_moves_the_focused_boundary() {
+    // The focused pane is idle; a sibling pane in the same workspace works.
+    let snapshot = snapshot_with_agents(&[
+        ("w1:p1", "w1", "idle"),
+        ("w1:p2", "w1", "working"),
+    ]);
+
+    let pane_scope = Config::default();
+    assert_eq!(render(&snapshot, &pane_scope), "① herdr:personal");
+
+    let workspace_scope = Config {
+        spinner_scope: SpinnerScope::Workspace,
+        ..Config::default()
+    };
+    assert_eq!(render(&snapshot, &workspace_scope), "⠋ herdr:personal");
 }
 
 #[test]
 fn glyphs_come_from_config() {
-    let (config, warnings) = Config::parse(
-        r#"
-        blocked_glyph = "!"
-        done_glyph = "ok"
-        "#,
-    );
-    assert!(warnings.is_empty());
-    assert_eq!(indicator(&active(1, 0, false, 0), &config, "⠋"), "!1 ");
-    assert_eq!(indicator(&active(0, 2, false, 0), &config, "⠋"), "ok2 ");
+    let config = Config {
+        blocked_glyph: "!".into(),
+        done_glyph: "ok".into(),
+        ..Config::default()
+    };
+    let blocked = snapshot_with_agents(&[("w2:p1", "w2", "blocked")]);
+    assert_eq!(render(&blocked, &config), "!1 herdr:personal");
+    let done = snapshot_with_agents(&[("w2:p1", "w2", "done")]);
+    assert_eq!(render(&done, &config), "ok1 herdr:personal");
 }
 
 #[test]
-fn aggregates_all_five_statuses_across_the_session() {
-    let activity = activity(&snapshot(), SpinnerScope::Pane);
-    assert_eq!(
-        activity,
-        SessionActivity {
-            blocked: 1,
-            done: 1,
-            focused_working: true,
-            background_working: 1,
-        }
-    );
-}
+fn per_state_templates_reshape_the_title_and_fall_back_when_unset() {
+    let config = Config {
+        blocked_template: Some("attention: {session}".into()),
+        ..Config::default()
+    };
+    let blocked = snapshot_with_agents(&[("w2:p1", "w2", "blocked")]);
+    assert_eq!(render(&blocked, &config), "attention: personal");
 
-#[test]
-fn workspace_scope_counts_focused_workspace_panes_as_focused_working() {
-    let mut snap = snapshot();
-    // Focused pane itself idle; another pane in the focused workspace works.
-    snap["agents"][0]["agent_status"] = serde_json::json!("idle");
-    let pane_scope = activity(&snap, SpinnerScope::Pane);
-    assert!(!pane_scope.focused_working);
-    assert_eq!(pane_scope.background_working, 1);
-
-    let workspace_scope = activity(&snap, SpinnerScope::Workspace);
-    assert!(workspace_scope.focused_working, "same-workspace work counts");
-    assert_eq!(workspace_scope.background_working, 0);
+    // done has no override configured → falls back to the base template.
+    let done = snapshot_with_agents(&[("w2:p1", "w2", "done")]);
+    assert_eq!(render(&done, &config), "✓1 herdr:personal");
 }

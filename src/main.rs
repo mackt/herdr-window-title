@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use herdr_window_title::config::{Config, DEFAULT_TEMPLATE};
-use herdr_window_title::indicator::{activity, indicator, select_template, SPINNER_FRAMES};
-use herdr_window_title::snapshot::token_values;
-use herdr_window_title::template::Template;
+use herdr_window_title::indicator::{activity, SPINNER_FRAMES};
+use herdr_window_title::render::render_title;
+use herdr_window_title::template::parse_with_fallback;
 
 /// The monitor ticks at least this often so it can notice a vanished herdr
 /// server (and exit) even when configured cadences are long.
@@ -29,33 +29,24 @@ fn run_hook() -> Result<(), Box<dyn std::error::Error>> {
     let paths = Paths::resolve()?;
 
     let (config, warnings) = Config::load(paths.config_dir.as_deref());
-    for warning in &warnings {
+    for warning in config_and_template_warnings(&config, warnings) {
         eprintln!("{warning}");
-    }
-    // Pre-flight every configured template so syntax problems land in the
-    // plugin log; the monitor renders silently with the same fallback.
-    for source in [
-        Some(&config.template),
-        config.working_template.as_ref(),
-        config.blocked_template.as_ref(),
-        config.done_template.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if let Err(error) = Template::parse(source) {
-            eprintln!("template: {}; the default template will be used", error.message);
-        }
     }
 
     if try_lock_monitor(&paths).is_some() {
         // Nobody holds the lock: the lock we just probed is dropped here and
         // a detached monitor child races to take it. Losers exit on their own.
+        // The monitor's own warnings and API failures land in monitor.log
+        // beside the plugin state, since a detached process has no plugin log.
+        let log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(paths.monitor_log())?;
         std::process::Command::new(std::env::current_exe()?)
             .arg("monitor")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(log)
             .spawn()?;
     }
 
@@ -86,45 +77,59 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
     let mut socket_failures = 0u32;
     let mut last_sent: Option<String> = None;
     let mut last_sent_at = Instant::now();
+    let mut last_warnings: Vec<String> = Vec::new();
+
+    // One more consecutive transport failure; true when it's time to give
+    // up — herdr is gone and a future event hook will restart us.
+    let strike = |failures: &mut u32, what: &str, error: &dyn std::fmt::Display| {
+        *failures += 1;
+        eprintln!("monitor: {what} failed ({error}); strike {failures}/{MAX_SOCKET_FAILURES}");
+        *failures >= MAX_SOCKET_FAILURES
+    };
 
     loop {
-        let (config, _) = Config::load(paths.config_dir.as_deref());
+        let (config, warnings) = Config::load(paths.config_dir.as_deref());
+        let warnings = config_and_template_warnings(&config, warnings);
+        if warnings != last_warnings {
+            for warning in &warnings {
+                eprintln!("{warning}");
+            }
+            last_warnings = warnings;
+        }
 
         let snapshot = match fetch_snapshot(&paths.socket_path) {
             Ok(snapshot) => {
                 socket_failures = 0;
                 snapshot
             }
-            Err(_) => {
-                socket_failures += 1;
-                if socket_failures >= MAX_SOCKET_FAILURES {
-                    return Ok(()); // herdr is gone; a future event restarts us
+            Err(error) => {
+                if strike(&mut socket_failures, "session.snapshot", &error) {
+                    return Ok(());
                 }
                 serde_json::Value::Null
             }
         };
 
-        let activity = activity(&snapshot, config.spinner_scope);
-        let mut values = token_values(&snapshot, &session, &host);
-        values.indicator = indicator(&activity, &config, SPINNER_FRAMES[frame_index]);
-        let template = parse_or_default(select_template(&activity, &config));
-        let title = template.render(&values);
+        let title = render_title(&snapshot, &config, &session, &host, SPINNER_FRAMES[frame_index]);
+        let focused_working = activity(&snapshot, config.spinner_scope).focused_working;
 
         let keepalive = Duration::from_millis(config.idle_keepalive_ms);
         let changed = last_sent.as_deref() != Some(title.as_str());
         if changed || last_sent_at.elapsed() >= keepalive {
-            if set_title(&paths.socket_path, &title).is_ok() {
-                last_sent = Some(title);
-                last_sent_at = Instant::now();
-            } else {
-                socket_failures += 1;
-                if socket_failures >= MAX_SOCKET_FAILURES {
-                    return Ok(());
+            match set_title(&paths.socket_path, &title) {
+                Ok(()) => {
+                    last_sent = Some(title);
+                    last_sent_at = Instant::now();
+                }
+                Err(error) => {
+                    if strike(&mut socket_failures, "client.window_title.set", &error) {
+                        return Ok(());
+                    }
                 }
             }
         }
 
-        let cadence = if activity.focused_working {
+        let cadence = if focused_working {
             frame_index = (frame_index + 1) % SPINNER_FRAMES.len();
             Duration::from_millis(config.spinner_interval_ms)
         } else {
@@ -173,6 +178,28 @@ impl Paths {
     fn poke_socket(&self) -> PathBuf {
         self.state_dir.join("poke.sock")
     }
+
+    fn monitor_log(&self) -> PathBuf {
+        self.state_dir.join("monitor.log")
+    }
+}
+
+/// Everything a config deserves warnings for: bad fields, plus template
+/// syntax problems and unknown tokens across all four templates.
+fn config_and_template_warnings(config: &Config, mut warnings: Vec<String>) -> Vec<String> {
+    for source in [
+        Some(&config.template),
+        config.working_template.as_ref(),
+        config.blocked_template.as_ref(),
+        config.done_template.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let (_, template_warnings) = parse_with_fallback(source, DEFAULT_TEMPLATE);
+        warnings.extend(template_warnings);
+    }
+    warnings
 }
 
 /// The monitor lock: kernel-released on process death, so stale locks from
@@ -187,18 +214,6 @@ fn try_lock_monitor(paths: &Paths) -> Option<std::fs::File> {
     match file.try_lock() {
         Ok(()) => Some(file),
         Err(_) => None,
-    }
-}
-
-/// A parsed template, falling back to the built-in default on syntax errors
-/// so the title never disappears.
-fn parse_or_default(source: &str) -> Template {
-    match Template::parse(source) {
-        Ok(template) => template,
-        Err(error) => {
-            eprintln!("template: {}; using default template", error.message);
-            Template::parse(DEFAULT_TEMPLATE).expect("built-in template is valid")
-        }
     }
 }
 

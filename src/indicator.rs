@@ -71,24 +71,17 @@ pub fn select_template<'config>(activity: &SessionActivity, config: &'config Con
 /// never participates. "Focused working" follows the spinner scope: the
 /// focused pane only, or any pane in the focused workspace.
 pub fn activity(snapshot: &serde_json::Value, scope: SpinnerScope) -> SessionActivity {
-    let focused_pane = snapshot["focused_pane_id"].as_str().unwrap_or("");
-    let focused_workspace = snapshot["focused_workspace_id"].as_str().unwrap_or("");
+    let focus = crate::snapshot::focus(snapshot);
     let mut activity = SessionActivity::default();
 
-    let Some(agents) = snapshot["agents"].as_array() else {
-        return activity;
-    };
-    for agent in agents {
-        let status = agent["agent_status"].as_str().unwrap_or("unknown");
-        match status {
+    for agent in crate::snapshot::agents(snapshot) {
+        match agent.status.as_str() {
             "blocked" => activity.blocked += 1,
             "done" => activity.done += 1,
             "working" => {
                 let in_scope = match scope {
-                    SpinnerScope::Pane => agent["pane_id"].as_str() == Some(focused_pane),
-                    SpinnerScope::Workspace => {
-                        agent["workspace_id"].as_str() == Some(focused_workspace)
-                    }
+                    SpinnerScope::Pane => agent.pane_id == focus.pane_id,
+                    SpinnerScope::Workspace => agent.workspace_id == focus.workspace_id,
                 };
                 if in_scope {
                     activity.focused_working = true;

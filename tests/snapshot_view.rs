@@ -1,7 +1,8 @@
-//! Pure seam: extracting TokenValues from a `session.snapshot` payload.
+//! Secondary seam: token extraction asserted through `render_title` output.
 //! The fixture mirrors the real 0.7.5 snapshot shape.
 
-use herdr_window_title::snapshot::token_values;
+use herdr_window_title::config::Config;
+use herdr_window_title::render::render_title;
 
 fn snapshot() -> serde_json::Value {
     serde_json::json!({
@@ -19,41 +20,60 @@ fn snapshot() -> serde_json::Value {
         ],
         "agents": [
             {"pane_id": "w2:p3", "workspace_id": "w2", "tab_id": "w2:t2", "agent": "claude",
-             "agent_status": "working", "focused": true,
+             "agent_status": "idle", "focused": true,
              "terminal_title": "✳ fix titles", "terminal_title_stripped": "fix titles"},
         ],
         "panes": [
-            {"pane_id": "w2:p3", "workspace_id": "w2", "tab_id": "w2:t2", "agent_status": "working",
+            {"pane_id": "w2:p3", "workspace_id": "w2", "tab_id": "w2:t2", "agent_status": "idle",
              "focused": true, "terminal_title_stripped": "fix titles"},
         ],
     })
 }
 
+fn token_config() -> Config {
+    Config {
+        template: "{workspace}/{tab} {agent}:{title}@{host}".into(),
+        ..Config::default()
+    }
+}
+
 #[test]
-fn extracts_focused_context_from_snapshot() {
-    let values = token_values(&snapshot(), "personal", "mbp");
-    assert_eq!(values.session, "personal");
-    assert_eq!(values.host, "mbp");
-    assert_eq!(values.workspace, "dotfiles");
-    assert_eq!(values.tab, "logs");
-    assert_eq!(values.agent, "claude");
-    assert_eq!(values.title, "fix titles");
+fn every_token_renders_its_focused_context_value() {
+    let title = render_title(&snapshot(), &token_config(), "personal", "mbp", "⠋");
+    assert_eq!(title, "dotfiles/logs claude:fix titles@mbp");
 }
 
 #[test]
 fn numeric_tab_label_falls_back_to_switch_order() {
     let mut snap = snapshot();
     snap["tabs"][1]["label"] = serde_json::json!("2");
-    let values = token_values(&snap, "personal", "mbp");
-    assert_eq!(values.tab, "2", "second tab of the focused workspace by switch order");
+    let title = render_title(&snap, &token_config(), "personal", "mbp", "⠋");
+    assert_eq!(
+        title, "dotfiles/2 claude:fix titles@mbp",
+        "second tab of the focused workspace by switch order"
+    );
 }
 
 #[test]
-fn missing_focus_yields_empty_optional_tokens() {
-    let values = token_values(&serde_json::json!({}), "personal", "mbp");
-    assert_eq!(values.session, "personal");
-    assert_eq!(values.workspace, "");
-    assert_eq!(values.tab, "");
-    assert_eq!(values.agent, "");
-    assert_eq!(values.title, "");
+fn missing_focus_collapses_optional_sections() {
+    let config = Config {
+        template: "herdr:{session}[ · {workspace}][ {agent}:{title}]".into(),
+        ..Config::default()
+    };
+    let title = render_title(&serde_json::json!({}), &config, "personal", "mbp", "⠋");
+    assert_eq!(title, "herdr:personal");
+}
+
+#[test]
+fn title_falls_back_to_the_pane_entry_when_the_agent_entry_lacks_one() {
+    let mut snap = snapshot();
+    snap["agents"][0]
+        .as_object_mut()
+        .expect("agent entry")
+        .remove("terminal_title_stripped");
+    let title = render_title(&snap, &token_config(), "personal", "mbp", "⠋");
+    assert_eq!(
+        title, "dotfiles/logs claude:fix titles@mbp",
+        "field-level fallback: the pane entry still carries the title"
+    );
 }
