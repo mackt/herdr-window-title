@@ -37,6 +37,30 @@ fn backslash_escapes_brackets_and_braces() {
 }
 
 #[test]
+fn unknown_token_renders_literally_for_self_diagnosis() {
+    let template = Template::parse("herdr:{sesion}").expect("unknown tokens are not parse errors");
+    assert_eq!(template.render(&values()), "herdr:{sesion}");
+}
+
+#[test]
+fn unknown_token_inside_section_keeps_the_section() {
+    let template = Template::parse("x[ {typo}]").expect("valid");
+    assert_eq!(template.render(&values()), "x {typo}");
+}
+
+#[test]
+fn section_with_no_tokens_renders_as_is() {
+    let template = Template::parse("a[ fixed ]b").expect("valid");
+    assert_eq!(template.render(&values()), "a fixed b");
+}
+
+#[test]
+fn unclosed_brace_and_bracket_are_parse_errors() {
+    assert!(Template::parse("herdr:{session").is_err());
+    assert!(Template::parse("herdr:{session}[ · {workspace}").is_err());
+}
+
+#[test]
 fn substitutes_every_token() {
     let template =
         Template::parse("{indicator}herdr:{session} {workspace}/{tab} {agent}:{title}@{host}")
