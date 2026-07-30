@@ -181,6 +181,15 @@ fn respond_to(
 
 /// Run the hook binary against the fake, with a clean env plus `envs`.
 pub fn run_hook(socket_path: &Path, envs: &[(&str, &str)]) -> std::process::ExitStatus {
+    hook_command(socket_path, envs).status().expect("hook binary runs")
+}
+
+/// Like `run_hook`, but captures stdout/stderr for warning assertions.
+pub fn run_hook_capture(socket_path: &Path, envs: &[(&str, &str)]) -> std::process::Output {
+    hook_command(socket_path, envs).output().expect("hook binary runs")
+}
+
+fn hook_command(socket_path: &Path, envs: &[(&str, &str)]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-window-title"));
     command
         .env_remove("HERDR_SESSION")
@@ -190,7 +199,7 @@ pub fn run_hook(socket_path: &Path, envs: &[(&str, &str)]) -> std::process::Exit
     for (key, value) in envs {
         command.env(key, value);
     }
-    command.status().expect("hook binary runs")
+    command
 }
 
 /// Write an executable fake `herdr` CLI that prints canned `status --json` output.
