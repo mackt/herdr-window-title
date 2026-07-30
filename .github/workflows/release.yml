@@ -16,8 +16,10 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-14
+          # Intel macOS is cross-compiled from the arm runner: the macos-13
+          # (last Intel) runner label is retired and queues forever.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-14
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
           - target: aarch64-unknown-linux-gnu
@@ -26,15 +28,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
       - name: Package
         # Archive layout is target/release/herdr-window-title so that
         # extracting at the plugin root restores the path the plugin
         # manifest's commands expect.
         run: |
           archive="herdr-window-title-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
-          tar -czf "$archive" target/release/herdr-window-title
+          mkdir -p stage/target/release
+          cp "target/${{ matrix.target }}/release/herdr-window-title" stage/target/release/
+          tar -C stage -czf "$archive" target/release/herdr-window-title
           echo "packaged $archive"
       - uses: actions/upload-artifact@v4
         with:
