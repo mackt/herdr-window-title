@@ -11,9 +11,16 @@ fn render(snapshot: &serde_json::Value, config: &Config) -> String {
     render_title(snapshot, config, "personal", "mbp", "⠋")
 }
 
+fn pane_scope() -> Config {
+    Config {
+        spinner_scope: SpinnerScope::Pane,
+        ..Config::default()
+    }
+}
+
 #[test]
 fn indicator_shows_one_segment_by_priority() {
-    let config = Config::default();
+    let config = pane_scope();
     // Full house: focused working, one background working, two blocked,
     // one done, one unknown (which must never matter).
     let full = snapshot_with_agents(&[
@@ -52,7 +59,7 @@ fn indicator_shows_one_segment_by_priority() {
 
 #[test]
 fn counts_cap_for_display() {
-    let config = Config::default();
+    let config = pane_scope();
     let blocked: Vec<(String, String, &str)> = (0..12)
         .map(|i| (format!("w2:p{i}"), "w2".to_string(), "blocked"))
         .collect();
@@ -86,7 +93,7 @@ fn spinner_scope_moves_the_focused_boundary() {
         ("w1:p2", "w1", "working"),
     ]);
 
-    let pane_scope = Config::default();
+    let pane_scope = pane_scope();
     assert_eq!(render(&snapshot, &pane_scope), "① herdr:personal");
 
     let workspace_scope = Config {

@@ -8,8 +8,7 @@ and starts saying something useful:
 
 ```
 herdr:personal            idle
-⠙ herdr:personal          the agent you're looking at is working
-② herdr:personal          two agents working in the background
+⠙ herdr:personal          an agent is working
 ✓1 herdr:personal         an agent finished and awaits your review
 ●2 herdr:personal         two agents are waiting for YOUR input
 ```
@@ -67,14 +66,14 @@ Exactly one segment, highest priority wins, counted across the whole session:
 
 1. `●N` — N agents **blocked**, waiting for your input
 2. `✓N` — N agents **done**, finished and not yet looked at
-3. `⠋⠙⠹…` — animated spinner while the **focused** agent works
-4. `①`–`⑳`, `⊕` — count of agents working in the background
+3. `⠋⠙⠹…` — animated spinner while an agent **in scope** works
+4. `①`–`⑳`, `⊕` — count of working agents *outside* the scope
 5. empty — nothing happening
 
-Counts cap at `9+`. "Focused" means the focused pane by default; set
-`spinner_scope = "workspace"` to count any pane in the focused workspace, or
-`spinner_scope = "session"` to spin whenever *any* agent in the session is
-working (the background count then never appears).
+Counts cap at `9+`. The scope defaults to the whole **session**: any working
+agent anywhere spins, and the out-of-scope count never appears. Set
+`spinner_scope = "pane"` to spin only for the focused pane (other work shows
+as a count), or `"workspace"` for any pane in the focused workspace.
 
 ## Configuration
 
@@ -90,8 +89,8 @@ working_template = ""
 blocked_template = ""     # e.g. "●{session} NEEDS YOU"
 done_template = ""
 
-spinner_scope = "pane"    # "pane" | "workspace" | "session"
-spinner_interval_ms = 200 # spinner frame rate while focused work runs
+spinner_scope = "session" # "session" | "workspace" | "pane"
+spinner_interval_ms = 200 # spinner frame rate while in-scope work runs
 idle_keepalive_ms = 2000  # title re-assert cadence (also the reattach fix)
 
 blocked_glyph = "●"

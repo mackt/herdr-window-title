@@ -34,7 +34,7 @@ impl Default for Config {
             working_template: None,
             blocked_template: None,
             done_template: None,
-            spinner_scope: SpinnerScope::Pane,
+            spinner_scope: SpinnerScope::Session,
             spinner_interval_ms: 200,
             idle_keepalive_ms: 2000,
             blocked_glyph: "●".into(),

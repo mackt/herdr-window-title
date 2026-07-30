@@ -127,7 +127,7 @@ fn config_table_defaults_and_field_fallback_match_the_spec() {
     assert_eq!(config.working_template, None);
     assert_eq!(config.blocked_template, None);
     assert_eq!(config.done_template, None);
-    assert_eq!(config.spinner_scope, SpinnerScope::Pane);
+    assert_eq!(config.spinner_scope, SpinnerScope::Session);
     assert_eq!(config.spinner_interval_ms, 200);
     assert_eq!(config.idle_keepalive_ms, 2000);
     assert_eq!(config.blocked_glyph, "●");
