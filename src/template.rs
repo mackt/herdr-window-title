@@ -105,7 +105,7 @@ fn parse_segments(
 ) -> Result<Vec<Segment>, ParseError> {
     let mut segments = Vec::new();
     let mut literal = String::new();
-    let mut flush = |literal: &mut String, segments: &mut Vec<Segment>| {
+    let flush = |literal: &mut String, segments: &mut Vec<Segment>| {
         if !literal.is_empty() {
             segments.push(Segment::Literal(std::mem::take(literal)));
         }

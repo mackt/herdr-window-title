@@ -1,3 +1,4 @@
+#![allow(dead_code)] // shared across test crates; each uses a subset
 //! Fake herdr server: the primary test seam. Speaks herdr's
 //! newline-delimited JSON protocol on a unix socket, records every request
 //! with its arrival time, and answers from a mutable canned snapshot.

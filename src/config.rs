@@ -75,7 +75,7 @@ impl Config {
             }
         };
 
-        let mut string = |key: &str, into: &mut String, warnings: &mut Vec<String>| {
+        let string = |key: &str, into: &mut String, warnings: &mut Vec<String>| {
             match table.get(key) {
                 None => {}
                 Some(toml::Value::String(value)) => *into = value.clone(),
@@ -86,7 +86,7 @@ impl Config {
         string("blocked_glyph", &mut config.blocked_glyph, &mut warnings);
         string("done_glyph", &mut config.done_glyph, &mut warnings);
 
-        let mut optional = |key: &str, into: &mut Option<String>, warnings: &mut Vec<String>| {
+        let optional = |key: &str, into: &mut Option<String>, warnings: &mut Vec<String>| {
             match table.get(key) {
                 None => {}
                 Some(toml::Value::String(value)) if value.is_empty() => {}
@@ -98,7 +98,7 @@ impl Config {
         optional("blocked_template", &mut config.blocked_template, &mut warnings);
         optional("done_template", &mut config.done_template, &mut warnings);
 
-        let mut interval = |key: &str, into: &mut u64, warnings: &mut Vec<String>| {
+        let interval = |key: &str, into: &mut u64, warnings: &mut Vec<String>| {
             match table.get(key) {
                 None => {}
                 Some(toml::Value::Integer(value)) if *value > 0 => *into = *value as u64,
