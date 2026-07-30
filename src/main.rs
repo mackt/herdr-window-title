@@ -78,6 +78,7 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_sent: Option<String> = None;
     let mut last_sent_at = Instant::now();
     let mut last_warnings: Vec<String> = Vec::new();
+    let mut last_api_error: Option<String> = None;
 
     // One more consecutive transport failure; true when it's time to give
     // up — herdr is gone and a future event hook will restart us.
@@ -100,9 +101,22 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
         let snapshot = match fetch_snapshot(&paths.socket_path) {
             Ok(snapshot) => {
                 socket_failures = 0;
+                if last_api_error.take().is_some() {
+                    eprintln!("monitor: session.snapshot recovered");
+                }
                 snapshot
             }
-            Err(error) => {
+            Err(FetchError::Api(message)) => {
+                socket_failures = 0;
+                if last_api_error.as_deref() != Some(message.as_str()) {
+                    eprintln!(
+                        "monitor: session.snapshot returned an error ({message}); rendering without snapshot data"
+                    );
+                    last_api_error = Some(message);
+                }
+                serde_json::Value::Null
+            }
+            Err(FetchError::Transport(error)) => {
                 if strike(&mut socket_failures, "session.snapshot", &error) {
                     return Ok(());
                 }
@@ -112,6 +126,28 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
 
         let title = render_title(&snapshot, &config, &session, &host, SPINNER_FRAMES[frame_index]);
         let focused_working = activity(&snapshot, config.spinner_scope).focused_working;
+        if std::env::var_os("HWT_DEBUG").is_some() {
+            let focus = snapshot["focused_pane_id"].as_str().unwrap_or("-");
+            let states: Vec<String> = snapshot["agents"]
+                .as_array()
+                .map(|agents| {
+                    agents
+                        .iter()
+                        .map(|a| {
+                            format!(
+                                "{}={}",
+                                a["pane_id"].as_str().unwrap_or("?"),
+                                a["agent_status"].as_str().unwrap_or("?")
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            eprintln!(
+                "tick: title={title:?} focused_working={focused_working} focus={focus} agents=[{}]",
+                states.join(",")
+            );
+        }
 
         let keepalive = Duration::from_millis(config.idle_keepalive_ms);
         let changed = last_sent.as_deref() != Some(title.as_str());
@@ -245,12 +281,24 @@ fn set_title(socket_path: &str, title: &str) -> Result<(), Box<dyn std::error::E
 /// The current session snapshot; `Err` only for transport failures (used to
 /// detect a vanished server). An in-band error response degrades to `null`,
 /// which renders as empty optional tokens.
-fn fetch_snapshot(socket_path: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+enum FetchError {
+    /// Could not reach herdr at all — counts toward the give-up strikes.
+    Transport(Box<dyn std::error::Error>),
+    /// herdr answered with an error — server is alive; degrade and log.
+    Api(String),
+}
+
+fn fetch_snapshot(socket_path: &str) -> Result<serde_json::Value, FetchError> {
+    // herdr rejects any request without a `params` field, even an empty one.
     let request = serde_json::json!({
         "id": "herdr-window-title:snapshot",
         "method": "session.snapshot",
+        "params": {},
     });
-    let response = send_request(socket_path, &request)?;
+    let response = send_request(socket_path, &request).map_err(FetchError::Transport)?;
+    if let Some(error) = response.get("error") {
+        return Err(FetchError::Api(error.to_string()));
+    }
     Ok(response["result"]["snapshot"].clone())
 }
 

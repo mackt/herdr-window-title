@@ -154,6 +154,15 @@ fn respond_to(
     fail_snapshot: &AtomicBool,
 ) -> serde_json::Value {
     let id = request["id"].clone();
+    // Protocol fidelity: real herdr rejects any request lacking a `params`
+    // field (even session.snapshot needs an empty object). Discovered live;
+    // the fake must stay at least this strict.
+    if request.get("params").is_none() {
+        return serde_json::json!({
+            "id": "",
+            "error": {"code": "invalid_request", "message": "invalid request: missing field `params`"},
+        });
+    }
     match request["method"].as_str() {
         Some("session.snapshot") => {
             if fail_snapshot.load(Ordering::SeqCst) {
