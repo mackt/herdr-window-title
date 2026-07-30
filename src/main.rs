@@ -1,19 +1,24 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 
+use herdr_window_title::config::{Config, DEFAULT_TEMPLATE};
 use herdr_window_title::snapshot::token_values;
 use herdr_window_title::template::Template;
-
-const DEFAULT_TEMPLATE: &str = "{indicator}herdr:{session}";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket_path = std::env::var("HERDR_SOCKET_PATH")?;
     let session = resolve_session();
     let host = short_hostname();
 
+    let config_dir = std::env::var_os("HERDR_PLUGIN_CONFIG_DIR").map(std::path::PathBuf::from);
+    let (config, warnings) = Config::load(config_dir.as_deref());
+    for warning in &warnings {
+        eprintln!("{warning}");
+    }
+
     let snapshot = fetch_snapshot(&socket_path);
     let values = token_values(&snapshot, &session, &host);
-    let template = Template::parse(DEFAULT_TEMPLATE).expect("built-in template is valid");
+    let template = parse_or_default(&config.template);
     let title = template.render(&values);
 
     let request = serde_json::json!({
@@ -23,6 +28,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     send_request(&socket_path, &request)?;
     Ok(())
+}
+
+/// A parsed template, falling back to the built-in default on syntax errors
+/// so the title never disappears.
+fn parse_or_default(source: &str) -> Template {
+    match Template::parse(source) {
+        Ok(template) => template,
+        Err(error) => {
+            eprintln!("template: {}; using default template", error.message);
+            Template::parse(DEFAULT_TEMPLATE).expect("built-in template is valid")
+        }
+    }
 }
 
 /// One request, one response, own connection — mirrors herdr's CLI clients.

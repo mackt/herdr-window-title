@@ -7,6 +7,7 @@ description = "Configurable outer-terminal title for herdr: template-driven, ses
 
 [dependencies]
 serde_json = "1"
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
