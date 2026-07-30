@@ -1,7 +1,7 @@
 //! Pure seam: session activity aggregation and indicator rendering.
 
-use herdr_window_title::config::SpinnerScope;
-use herdr_window_title::indicator::{activity, SessionActivity};
+use herdr_window_title::config::{Config, SpinnerScope};
+use herdr_window_title::indicator::{activity, indicator, SessionActivity};
 
 /// Two workspaces; focus on w1:p1. Statuses across the whole session:
 /// one blocked (other workspace), one done, one unknown (ignored),
@@ -25,6 +25,49 @@ fn snapshot() -> serde_json::Value {
         ],
         "panes": [],
     })
+}
+
+fn active(blocked: usize, done: usize, focused: bool, background: usize) -> SessionActivity {
+    SessionActivity {
+        blocked,
+        done,
+        focused_working: focused,
+        background_working: background,
+    }
+}
+
+#[test]
+fn indicator_renders_one_segment_by_priority() {
+    let config = Config::default();
+    let frame = "⠋";
+    // blocked beats everything; done beats working; spinner beats count.
+    assert_eq!(indicator(&active(2, 1, true, 3), &config, frame), "●2 ");
+    assert_eq!(indicator(&active(0, 1, true, 3), &config, frame), "✓1 ");
+    assert_eq!(indicator(&active(0, 0, true, 3), &config, frame), "⠋ ");
+    assert_eq!(indicator(&active(0, 0, false, 3), &config, frame), "③ ");
+    assert_eq!(indicator(&active(0, 0, false, 0), &config, frame), "");
+}
+
+#[test]
+fn counts_cap_for_display() {
+    let config = Config::default();
+    assert_eq!(indicator(&active(12, 0, false, 0), &config, "⠋"), "●9+ ");
+    assert_eq!(indicator(&active(0, 10, false, 0), &config, "⠋"), "✓9+ ");
+    assert_eq!(indicator(&active(0, 0, false, 20), &config, "⠋"), "⑳ ");
+    assert_eq!(indicator(&active(0, 0, false, 21), &config, "⠋"), "⊕ ");
+}
+
+#[test]
+fn glyphs_come_from_config() {
+    let (config, warnings) = Config::parse(
+        r#"
+        blocked_glyph = "!"
+        done_glyph = "ok"
+        "#,
+    );
+    assert!(warnings.is_empty());
+    assert_eq!(indicator(&active(1, 0, false, 0), &config, "⠋"), "!1 ");
+    assert_eq!(indicator(&active(0, 2, false, 0), &config, "⠋"), "ok2 ");
 }
 
 #[test]

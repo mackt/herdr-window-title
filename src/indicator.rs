@@ -1,6 +1,9 @@
 //! Agent-state aggregation across the session and the `{indicator}` token.
 
-use crate::config::SpinnerScope;
+use crate::config::{Config, SpinnerScope};
+
+/// Braille spinner frames, advanced by the monitor while focused work runs.
+pub const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SessionActivity {
@@ -8,6 +11,44 @@ pub struct SessionActivity {
     pub done: usize,
     pub focused_working: bool,
     pub background_working: usize,
+}
+
+/// The `{indicator}` token: exactly one segment — the highest non-empty
+/// priority — with a trailing space so the default template collapses
+/// cleanly when idle. Priority: blocked > done > focused spinner >
+/// background count > empty.
+pub fn indicator(activity: &SessionActivity, config: &Config, frame: &str) -> String {
+    if activity.blocked > 0 {
+        return format!("{}{} ", config.blocked_glyph, capped(activity.blocked));
+    }
+    if activity.done > 0 {
+        return format!("{}{} ", config.done_glyph, capped(activity.done));
+    }
+    if activity.focused_working {
+        return format!("{frame} ");
+    }
+    if activity.background_working > 0 {
+        return format!("{} ", circled(activity.background_working));
+    }
+    String::new()
+}
+
+fn capped(count: usize) -> String {
+    if count > 9 {
+        "9+".into()
+    } else {
+        count.to_string()
+    }
+}
+
+/// Background-work count as a circled digit: ①–⑳, then ⊕ beyond.
+fn circled(count: usize) -> String {
+    match count {
+        1..=20 => char::from_u32(0x2460 + (count as u32 - 1))
+            .expect("U+2460..U+2473 are valid")
+            .to_string(),
+        _ => "⊕".into(),
+    }
 }
 
 /// Count agent states across every workspace in the snapshot. `unknown`
