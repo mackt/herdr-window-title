@@ -1,0 +1,12 @@
+[package]
+name = "herdr-window-title"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Configurable outer-terminal title for herdr: template-driven, session-aware, with a live agent-state indicator"
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
