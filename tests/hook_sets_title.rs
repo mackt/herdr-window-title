@@ -106,3 +106,23 @@ fn hook_falls_back_to_status_json_when_env_is_absent() {
     assert_eq!(request["params"]["title"], "herdr:work");
     assert!(status.success());
 }
+
+#[test]
+fn hook_defaults_session_name_when_nothing_resolves() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let socket_path = dir.path().join("herdr.sock");
+    let listener = UnixListener::bind(&socket_path).expect("bind fake herdr socket");
+    let request_rx = serve_one_request(listener);
+    let missing_bin = dir.path().join("no-such-herdr");
+
+    let status = run_hook(
+        &socket_path,
+        &[("HERDR_BIN_PATH", missing_bin.to_str().expect("utf8 path"))],
+    );
+
+    let request = request_rx
+        .recv_timeout(ACCEPT_TIMEOUT)
+        .expect("hook sent a request to the herdr socket");
+    assert_eq!(request["params"]["title"], "herdr:default");
+    assert!(status.success());
+}
