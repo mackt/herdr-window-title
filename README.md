@@ -136,6 +136,15 @@ socket:
 cargo test
 ```
 
+To watch the monitor's per-tick decisions against a live herdr, run it in the
+foreground with `HWT_DEBUG=1` (kill the background monitor first):
+
+```sh
+pkill -f "herdr-window-title monitor"
+HWT_DEBUG=1 HERDR_SOCKET_PATH=~/.config/herdr/sessions/<name>/herdr.sock \
+  ./target/release/herdr-window-title monitor
+```
+
 ## License
 
 [MIT](LICENSE)
