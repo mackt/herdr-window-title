@@ -6,7 +6,7 @@ description = "Configurable outer-terminal title: template-driven, session-aware
 platforms = ["macos", "linux"]
 
 [[build]]
-command = ["cargo", "build", "--release"]
+command = ["sh", "scripts/fetch-release.sh"]
 
 [[actions]]
 id = "refresh"
