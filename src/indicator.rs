@@ -51,6 +51,22 @@ fn circled(count: usize) -> String {
     }
 }
 
+/// Template selection follows the aggregate state: blocked, then done,
+/// then working (focused or background), each falling back to the base
+/// template when its override is unset.
+pub fn select_template<'config>(activity: &SessionActivity, config: &'config Config) -> &'config str {
+    let selected = if activity.blocked > 0 {
+        config.blocked_template.as_ref()
+    } else if activity.done > 0 {
+        config.done_template.as_ref()
+    } else if activity.focused_working || activity.background_working > 0 {
+        config.working_template.as_ref()
+    } else {
+        None
+    };
+    selected.unwrap_or(&config.template)
+}
+
 /// Count agent states across every workspace in the snapshot. `unknown`
 /// never participates. "Focused working" follows the spinner scope: the
 /// focused pane only, or any pane in the focused workspace.

@@ -2,6 +2,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 
 use herdr_window_title::config::{Config, DEFAULT_TEMPLATE};
+use herdr_window_title::indicator::{activity, indicator, select_template, SPINNER_FRAMES};
 use herdr_window_title::snapshot::token_values;
 use herdr_window_title::template::Template;
 
@@ -17,8 +18,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let snapshot = fetch_snapshot(&socket_path);
-    let values = token_values(&snapshot, &session, &host);
-    let template = parse_or_default(&config.template);
+    let activity = activity(&snapshot, config.spinner_scope);
+    let mut values = token_values(&snapshot, &session, &host);
+    values.indicator = indicator(&activity, &config, SPINNER_FRAMES[0]);
+    let template = parse_or_default(select_template(&activity, &config));
     let title = template.render(&values);
 
     let request = serde_json::json!({
