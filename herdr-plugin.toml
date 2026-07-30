@@ -1,0 +1,55 @@
+id = "mackt.window-title"
+name = "Window Title"
+version = "0.1.0"
+min_herdr_version = "0.7.4"
+description = "Configurable outer-terminal title: template-driven, session-aware, with a live agent-state indicator."
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["cargo", "build", "--release"]
+
+[[actions]]
+id = "refresh"
+title = "Refresh terminal title"
+contexts = ["workspace", "tab", "pane"]
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "workspace.focused"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "workspace.renamed"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "tab.focused"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "tab.renamed"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "pane.focused"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "pane.created"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "pane.closed"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "pane.moved"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "pane.agent_detected"
+command = ["./target/release/herdr-window-title"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["./target/release/herdr-window-title"]
