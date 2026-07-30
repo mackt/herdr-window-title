@@ -112,6 +112,10 @@ fn parse_segments(
     };
     while let Some(ch) = chars.next() {
         match ch {
+            '\\' => match chars.next() {
+                Some(escaped) => literal.push(escaped),
+                None => literal.push('\\'),
+            },
             '{' => {
                 let mut name = String::new();
                 loop {

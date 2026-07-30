@@ -31,6 +31,12 @@ fn optional_section_renders_when_any_inner_token_has_a_value() {
 }
 
 #[test]
+fn backslash_escapes_brackets_and_braces() {
+    let template = Template::parse(r"\[{session}\] \{literal\}").expect("valid");
+    assert_eq!(template.render(&values()), "[personal] {literal}");
+}
+
+#[test]
 fn substitutes_every_token() {
     let template =
         Template::parse("{indicator}herdr:{session} {workspace}/{tab} {agent}:{title}@{host}")
