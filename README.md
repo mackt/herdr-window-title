@@ -25,6 +25,11 @@ herdr plugin install mackt/herdr-window-title
 Installation downloads a prebuilt, SHA256-verified binary for your platform
 (macOS/Linux × x86_64/arm64) — no Rust toolchain required.
 
+**Using `herdr --remote`?** Install the plugin on the **remote server machine**
+— event hooks and the title monitor run server-side, and the title reaches
+your local terminal through the attach stream. `{host}` then shows the remote
+hostname, so remote sessions stay distinguishable.
+
 ## How the title is built
 
 The title is rendered from a template. The default is:
