@@ -4,7 +4,7 @@
 mod common;
 
 use common::{run_hook, run_hook_capture, FakeHerdr};
-use herdr_window_title::config::{Config, SpinnerScope};
+use herdr_window_title::config::{Config, HostDisplay, SpinnerScope};
 use std::path::Path;
 
 fn write_config(dir: &Path, contents: &str) {
@@ -123,10 +123,11 @@ fn config_edits_apply_on_the_next_render_without_restart() {
 #[test]
 fn config_table_defaults_and_field_fallback_match_the_spec() {
     let config = Config::default();
-    assert_eq!(config.template, "{indicator}herdr:{session}");
+    assert_eq!(config.template, "{indicator}herdr:{session}[ ({host})]");
     assert_eq!(config.working_template, None);
     assert_eq!(config.blocked_template, None);
     assert_eq!(config.done_template, None);
+    assert_eq!(config.host_display, HostDisplay::Auto);
     assert_eq!(config.spinner_scope, SpinnerScope::Session);
     assert_eq!(config.spinner_interval_ms, 200);
     assert_eq!(config.idle_keepalive_ms, 2000);
@@ -137,6 +138,19 @@ fn config_table_defaults_and_field_fallback_match_the_spec() {
     assert_eq!(config.spinner_interval_ms, 200, "invalid interval falls back");
     assert_eq!(config.blocked_glyph, "●", "invalid glyph falls back");
     assert_eq!(warnings.len(), 2, "one warning per invalid field: {warnings:?}");
+
+    let (config, warnings) = Config::parse(r#"host_display = "sometimes""#);
+    assert_eq!(
+        config.host_display,
+        HostDisplay::Auto,
+        "invalid host_display falls back"
+    );
+    assert_eq!(warnings.len(), 1, "warning names the bad value: {warnings:?}");
+
+    let (config, _) = Config::parse(r#"host_display = "always""#);
+    assert_eq!(config.host_display, HostDisplay::Always);
+    let (config, _) = Config::parse(r#"host_display = "never""#);
+    assert_eq!(config.host_display, HostDisplay::Never);
 }
 
 #[test]

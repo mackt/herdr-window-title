@@ -46,6 +46,29 @@ fn hook_defaults_session_name_when_nothing_resolves() {
 }
 
 #[test]
+fn ssh_environment_adds_the_host_to_the_default_title() {
+    let fake = FakeHerdr::start();
+
+    let status = run_hook(
+        &fake.socket_path,
+        &[
+            ("HERDR_SESSION", "personal"),
+            ("SSH_CONNECTION", "192.168.0.15 55767 192.168.0.11 22"),
+        ],
+    );
+
+    let host = std::process::Command::new("hostname")
+        .arg("-s")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|name| name.trim().to_string())
+        .expect("test host has a hostname");
+    fake.wait_for_title(&format!("herdr:personal ({host})"));
+    assert!(status.success());
+}
+
+#[test]
 fn hook_fetches_the_snapshot_before_setting_the_title() {
     let fake = FakeHerdr::start();
 

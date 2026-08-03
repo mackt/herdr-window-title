@@ -3,7 +3,18 @@
 //! Every key is optional; anything invalid falls back to its default with
 //! a warning instead of breaking the title.
 
-pub const DEFAULT_TEMPLATE: &str = "{indicator}herdr:{session}";
+pub const DEFAULT_TEMPLATE: &str = "{indicator}herdr:{session}[ ({host})]";
+
+/// When `{host}` resolves to the server's hostname versus the empty string
+/// (empty is what lets a `[ ({host})]` section collapse on local servers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostDisplay {
+    /// Hostname only when the server was reached over SSH — remote sessions
+    /// name themselves, local ones stay clean.
+    Auto,
+    Always,
+    Never,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpinnerScope {
@@ -20,6 +31,7 @@ pub struct Config {
     pub working_template: Option<String>,
     pub blocked_template: Option<String>,
     pub done_template: Option<String>,
+    pub host_display: HostDisplay,
     pub spinner_scope: SpinnerScope,
     pub spinner_interval_ms: u64,
     pub idle_keepalive_ms: u64,
@@ -34,6 +46,7 @@ impl Default for Config {
             working_template: None,
             blocked_template: None,
             done_template: None,
+            host_display: HostDisplay::Auto,
             spinner_scope: SpinnerScope::Session,
             spinner_interval_ms: 200,
             idle_keepalive_ms: 2000,
@@ -110,6 +123,24 @@ impl Config {
         };
         interval("spinner_interval_ms", &mut config.spinner_interval_ms, &mut warnings);
         interval("idle_keepalive_ms", &mut config.idle_keepalive_ms, &mut warnings);
+
+        match table.get("host_display") {
+            None => {}
+            Some(toml::Value::String(value)) if value == "auto" => {
+                config.host_display = HostDisplay::Auto;
+            }
+            Some(toml::Value::String(value)) if value == "always" => {
+                config.host_display = HostDisplay::Always;
+            }
+            Some(toml::Value::String(value)) if value == "never" => {
+                config.host_display = HostDisplay::Never;
+            }
+            Some(other) => warnings.push(bad_type(
+                "host_display",
+                "\"auto\", \"always\", or \"never\"",
+                other,
+            )),
+        }
 
         match table.get("spinner_scope") {
             None => {}

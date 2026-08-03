@@ -11,6 +11,7 @@ herdr:personal            idle
 ⠙ herdr:personal          an agent is working
 ✓1 herdr:personal         an agent finished and awaits your review
 ●2 herdr:personal         two agents are waiting for YOUR input
+herdr:personal (devbox)   the same session, attached over SSH
 ```
 
 Works with any terminal that displays OSC window titles (Ghostty, WezTerm,
@@ -27,16 +28,21 @@ Installation downloads a prebuilt, SHA256-verified binary for your platform
 
 **Using `herdr --remote`?** Install the plugin on the **remote server machine**
 — event hooks and the title monitor run server-side, and the title reaches
-your local terminal through the attach stream. `{host}` then shows the remote
-hostname, so remote sessions stay distinguishable.
+your local terminal through the attach stream. Remote sessions name themselves
+out of the box: the plugin detects the SSH environment and the default title
+becomes `herdr:personal (devbox)`, while local sessions stay `herdr:personal`.
 
 ## How the title is built
 
 The title is rendered from a template. The default is:
 
 ```
-{indicator}herdr:{session}
+{indicator}herdr:{session}[ ({host})]
 ```
+
+On a local server `{host}` is empty (see `host_display` below), so the
+bracketed section collapses and the title is just `herdr:personal`; on a
+server reached over SSH it becomes `herdr:personal (devbox)`.
 
 ### Tokens
 
@@ -48,7 +54,7 @@ The title is rendered from a template. The default is:
 | `{tab}` | Focused tab's label, or its switch-order number (prefix+N) when the label is just a number. |
 | `{agent}` | Detected agent in the focused pane (`claude`, `codex`, …). |
 | `{title}` | The focused pane's terminal title (what the agent reports via OSC). |
-| `{host}` | Short hostname of the machine the herdr server runs on — distinguishes remote sessions. |
+| `{host}` | Short hostname of the machine the herdr server runs on. By default only rendered when that machine was reached over SSH — set `host_display = "always"` (or `"never"`) to override. |
 
 Unknown tokens render literally (so a typo is visible in the title) and warn in
 the plugin log.
@@ -87,12 +93,17 @@ mackt.window-title`). **Edits apply on the next refresh — no herdr restart.**
 Every key is optional:
 
 ```toml
-template = "{indicator}herdr:{session}"
+template = "{indicator}herdr:{session}[ ({host})]"
 
 # Per-state overrides; each falls back to `template` when unset.
 working_template = ""
 blocked_template = ""     # e.g. "●{session} NEEDS YOU"
 done_template = ""
+
+# When {host} resolves to the server hostname: "auto" only when the server
+# was reached over SSH (SSH_CONNECTION/SSH_CLIENT/SSH_TTY in its environment),
+# "always", or "never". Empty {host} collapses its [ … ] section.
+host_display = "auto"
 
 spinner_scope = "session" # "session" | "workspace" | "pane"
 spinner_interval_ms = 200 # spinner frame rate while in-scope work runs

@@ -8,7 +8,7 @@ use herdr_window_title::config::{Config, SpinnerScope};
 use herdr_window_title::render::render_title;
 
 fn render(snapshot: &serde_json::Value, config: &Config) -> String {
-    render_title(snapshot, config, "personal", "mbp", "⠋")
+    render_title(snapshot, config, "personal", "mbp", false, "⠋")
 }
 
 fn pane_scope() -> Config {

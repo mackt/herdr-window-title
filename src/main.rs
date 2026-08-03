@@ -73,6 +73,7 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
 
     let session = resolve_session();
     let host = short_hostname();
+    let remote = remote_server();
     let mut frame_index = 0usize;
     let mut socket_failures = 0u32;
     let mut last_sent: Option<String> = None;
@@ -124,7 +125,14 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        let title = render_title(&snapshot, &config, &session, &host, SPINNER_FRAMES[frame_index]);
+        let title = render_title(
+            &snapshot,
+            &config,
+            &session,
+            &host,
+            remote,
+            SPINNER_FRAMES[frame_index],
+        );
         let focused_working = activity(&snapshot, config.spinner_scope).focused_working;
         if std::env::var_os("HWT_DEBUG").is_some() {
             let focus = snapshot["focused_pane_id"].as_str().unwrap_or("-");
@@ -320,6 +328,16 @@ fn session_from_status() -> Option<String> {
         .ok()?;
     let status: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
     Some(status["server"]["session"].as_str()?.to_string())
+}
+
+/// Whether this herdr server was reached over SSH: the server process (and
+/// every plugin process it spawns) inherits the SSH session's connection
+/// variables. SSH_AUTH_SOCK is deliberately not a signal — local key agents
+/// (Bitwarden, 1Password) set it on machines never attached remotely.
+fn remote_server() -> bool {
+    ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]
+        .into_iter()
+        .any(|var| std::env::var_os(var).is_some_and(|value| !value.is_empty()))
 }
 
 fn short_hostname() -> String {

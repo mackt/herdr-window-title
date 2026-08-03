@@ -1,7 +1,7 @@
 //! Secondary seam: token extraction asserted through `render_title` output.
 //! The fixture mirrors the real 0.7.5 snapshot shape.
 
-use herdr_window_title::config::Config;
+use herdr_window_title::config::{Config, HostDisplay};
 use herdr_window_title::render::render_title;
 
 fn snapshot() -> serde_json::Value {
@@ -33,13 +33,15 @@ fn snapshot() -> serde_json::Value {
 fn token_config() -> Config {
     Config {
         template: "{workspace}/{tab} {agent}:{title}@{host}".into(),
+        // Token extraction is under test, not host gating — pin it open.
+        host_display: HostDisplay::Always,
         ..Config::default()
     }
 }
 
 #[test]
 fn every_token_renders_its_focused_context_value() {
-    let title = render_title(&snapshot(), &token_config(), "personal", "mbp", "⠋");
+    let title = render_title(&snapshot(), &token_config(), "personal", "mbp", false, "⠋");
     assert_eq!(title, "dotfiles/logs claude:fix titles@mbp");
 }
 
@@ -47,7 +49,7 @@ fn every_token_renders_its_focused_context_value() {
 fn numeric_tab_label_falls_back_to_switch_order() {
     let mut snap = snapshot();
     snap["tabs"][1]["label"] = serde_json::json!("2");
-    let title = render_title(&snap, &token_config(), "personal", "mbp", "⠋");
+    let title = render_title(&snap, &token_config(), "personal", "mbp", false, "⠋");
     assert_eq!(
         title, "dotfiles/2 claude:fix titles@mbp",
         "second tab of the focused workspace by switch order"
@@ -60,7 +62,33 @@ fn missing_focus_collapses_optional_sections() {
         template: "herdr:{session}[ · {workspace}][ {agent}:{title}]".into(),
         ..Config::default()
     };
-    let title = render_title(&serde_json::json!({}), &config, "personal", "mbp", "⠋");
+    let title = render_title(&serde_json::json!({}), &config, "personal", "mbp", false, "⠋");
+    assert_eq!(title, "herdr:personal");
+}
+
+#[test]
+fn host_renders_only_on_remote_servers_by_default() {
+    let config = Config::default();
+    let local = render_title(&snapshot(), &config, "personal", "mbp", false, "⠋");
+    assert_eq!(local, "herdr:personal", "local server: host section collapses");
+    let remote = render_title(&snapshot(), &config, "personal", "devbox", true, "⠋");
+    assert_eq!(remote, "herdr:personal (devbox)");
+}
+
+#[test]
+fn host_display_always_and_never_override_ssh_detection() {
+    let always = Config {
+        host_display: HostDisplay::Always,
+        ..Config::default()
+    };
+    let title = render_title(&snapshot(), &always, "personal", "mbp", false, "⠋");
+    assert_eq!(title, "herdr:personal (mbp)");
+
+    let never = Config {
+        host_display: HostDisplay::Never,
+        ..Config::default()
+    };
+    let title = render_title(&snapshot(), &never, "personal", "devbox", true, "⠋");
     assert_eq!(title, "herdr:personal");
 }
 
@@ -71,7 +99,7 @@ fn title_falls_back_to_the_pane_entry_when_the_agent_entry_lacks_one() {
         .as_object_mut()
         .expect("agent entry")
         .remove("terminal_title_stripped");
-    let title = render_title(&snap, &token_config(), "personal", "mbp", "⠋");
+    let title = render_title(&snap, &token_config(), "personal", "mbp", false, "⠋");
     assert_eq!(
         title, "dotfiles/logs claude:fix titles@mbp",
         "field-level fallback: the pane entry still carries the title"

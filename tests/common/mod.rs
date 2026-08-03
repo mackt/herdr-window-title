@@ -205,6 +205,11 @@ fn hook_command(socket_path: &Path, envs: &[(&str, &str)]) -> Command {
         .env_remove("HERDR_SESSION")
         .env_remove("HERDR_BIN_PATH")
         .env_remove("HERDR_PLUGIN_CONFIG_DIR")
+        // The binary treats SSH variables as "this server is remote"; tests
+        // must render the same titles under a local shell and an SSH one.
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
         .env("HERDR_SOCKET_PATH", socket_path);
     for (key, value) in envs {
         command.env(key, value);
