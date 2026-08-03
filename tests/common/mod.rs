@@ -23,8 +23,16 @@ pub struct FakeHerdr {
 
 impl FakeHerdr {
     pub fn start() -> Self {
+        Self::start_at("herdr.sock")
+    }
+
+    /// `relative_socket` is the socket's path under the temp dir — tests of
+    /// session-from-socket-path derivation pass "sessions/<name>/herdr.sock".
+    pub fn start_at(relative_socket: &str) -> Self {
         let dir = tempfile::tempdir().expect("temp dir");
-        let socket_path = dir.path().join("herdr.sock");
+        let socket_path = dir.path().join(relative_socket);
+        std::fs::create_dir_all(socket_path.parent().expect("socket has a parent"))
+            .expect("socket parent dir");
         let listener = UnixListener::bind(&socket_path).expect("bind fake herdr socket");
         let requests: Arc<Mutex<Vec<(Instant, serde_json::Value)>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -203,7 +211,6 @@ fn hook_command(socket_path: &Path, envs: &[(&str, &str)]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-window-title"));
     command
         .env_remove("HERDR_SESSION")
-        .env_remove("HERDR_BIN_PATH")
         .env_remove("HERDR_PLUGIN_CONFIG_DIR")
         // The binary treats SSH variables as "this server is remote"; tests
         // must render the same titles under a local shell and an SSH one.
@@ -241,18 +248,4 @@ pub fn snapshot_with_agents(agents: &[(&str, &str, &str)]) -> serde_json::Value 
         "agents": agents,
         "panes": [],
     })
-}
-
-/// Write an executable fake `herdr` CLI that prints canned `status --json` output.
-pub fn write_fake_herdr_bin(dir: &Path, status_json: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let bin_path = dir.join("fake-herdr");
-    std::fs::write(
-        &bin_path,
-        format!("#!/bin/sh\nprintf '%s\\n' '{status_json}'\n"),
-    )
-    .expect("write fake herdr bin");
-    std::fs::set_permissions(&bin_path, std::fs::Permissions::from_mode(0o755))
-        .expect("chmod fake herdr bin");
-    bin_path
 }

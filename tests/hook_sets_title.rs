@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{run_hook, write_fake_herdr_bin, FakeHerdr};
+use common::{run_hook, FakeHerdr};
 
 #[test]
 fn hook_sets_title_from_herdr_session_env() {
@@ -15,31 +15,32 @@ fn hook_sets_title_from_herdr_session_env() {
 }
 
 #[test]
-fn hook_falls_back_to_status_json_when_env_is_absent() {
-    let fake = FakeHerdr::start();
-    let fake_bin = write_fake_herdr_bin(
-        fake.dir.path(),
-        r#"{"client":{"session":"work"},"server":{"session":"work"}}"#,
-    );
+fn session_name_derives_from_a_named_session_socket_path() {
+    let fake = FakeHerdr::start_at("sessions/work/herdr.sock");
 
-    let status = run_hook(
-        &fake.socket_path,
-        &[("HERDR_BIN_PATH", fake_bin.to_str().expect("utf8 path"))],
-    );
+    let status = run_hook(&fake.socket_path, &[]);
 
     fake.wait_for_title("herdr:work");
     assert!(status.success());
 }
 
 #[test]
+fn socket_path_outranks_a_foreign_herdr_session_env() {
+    // Regression: a monitor respawned from a shell inside another session's
+    // pane inherits that session's HERDR_SESSION; the socket names the
+    // server actually being monitored and must win.
+    let fake = FakeHerdr::start_at("sessions/work/herdr.sock");
+
+    run_hook(&fake.socket_path, &[("HERDR_SESSION", "personal")]);
+
+    fake.wait_for_title("herdr:work");
+}
+
+#[test]
 fn hook_defaults_session_name_when_nothing_resolves() {
     let fake = FakeHerdr::start();
-    let missing_bin = fake.dir.path().join("no-such-herdr");
 
-    let status = run_hook(
-        &fake.socket_path,
-        &[("HERDR_BIN_PATH", missing_bin.to_str().expect("utf8 path"))],
-    );
+    let status = run_hook(&fake.socket_path, &[]);
 
     fake.wait_for_title("herdr:default");
     assert!(status.success());

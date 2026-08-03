@@ -71,7 +71,7 @@ fn run_monitor() -> Result<(), Box<dyn std::error::Error>> {
     let _ = std::fs::remove_file(&poke_path);
     let pokes = UnixDatagram::bind(&poke_path)?;
 
-    let session = resolve_session();
+    let session = resolve_session(&paths.socket_path);
     let host = short_hostname();
     let remote = remote_server();
     let mut frame_index = 0usize;
@@ -310,24 +310,29 @@ fn fetch_snapshot(socket_path: &str) -> Result<serde_json::Value, FetchError> {
     Ok(response["result"]["snapshot"].clone())
 }
 
-/// Session name, in resolution order: HERDR_SESSION env (inherited from the
-/// server process on named sessions), then `herdr status --json`, then the
-/// literal name of herdr's unnamed session.
-fn resolve_session() -> String {
-    if let Ok(session) = std::env::var("HERDR_SESSION") {
+/// Session name, in resolution order: the socket path when it matches
+/// herdr's named-session layout (`…/sessions/<name>/herdr.sock`), then
+/// HERDR_SESSION, then the literal name of herdr's unnamed session.
+///
+/// The socket outranks the environment: a monitor respawned from a shell
+/// inside another session's pane inherits that session's HERDR_SESSION, and
+/// `herdr status` resolves the *caller's* session — both once titled the
+/// default session as another one. The socket is the server actually being
+/// monitored. (Corollary: hand-launching the monitor against the unnamed
+/// session needs `env -u HERDR_SESSION` from such a shell.)
+fn resolve_session(socket_path: &str) -> String {
+    if let Some(session) = session_from_socket_path(Path::new(socket_path)) {
         return session;
     }
-    session_from_status().unwrap_or_else(|| "default".into())
+    std::env::var("HERDR_SESSION").unwrap_or_else(|_| "default".into())
 }
 
-fn session_from_status() -> Option<String> {
-    let herdr_bin = std::env::var("HERDR_BIN_PATH").unwrap_or_else(|_| "herdr".into());
-    let output = std::process::Command::new(herdr_bin)
-        .args(["status", "--json"])
-        .output()
-        .ok()?;
-    let status: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-    Some(status["server"]["session"].as_str()?.to_string())
+fn session_from_socket_path(socket: &Path) -> Option<String> {
+    let dir = socket.parent()?;
+    if dir.parent()?.file_name()? != "sessions" {
+        return None;
+    }
+    Some(dir.file_name()?.to_str()?.to_string())
 }
 
 /// Whether this herdr server was reached over SSH: the server process (and
